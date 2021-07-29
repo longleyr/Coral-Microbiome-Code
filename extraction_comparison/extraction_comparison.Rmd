@@ -35,7 +35,6 @@ Read in rds files created for phyloseq objects in preprocessing script
 ps.noncontam_symbiodinium_unmerged <- readRDS(file = "sym_unmerged.RDS")
 ps.noncontam_prok_unmerged <- readRDS(file = "prok_unmerged.RDS")
 ps.noncontam_fungi_unmerged <- readRDS(file = "fungi_unmerged.RDS")
-ps.noncontam_api_unmerged <- readRDS(file = "api_unmerged.RDS")
 ```
 
 
