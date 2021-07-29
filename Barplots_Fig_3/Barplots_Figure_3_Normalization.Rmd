@@ -1,0 +1,475 @@
+---
+title: "Bargraphs - Figure 3"
+author: "Reid Longley"
+date: "June 14, 2021"
+output: html_document
+---
+Packages loaded each time so scripts can stand alone.
+```{r load packages, include=FALSE}
+set.seed(9296)
+## load packages
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+library(indicspecies)
+library(vegan)
+library(Biostrings)
+library(devtools)
+library(decontam)
+library(ggplot2)
+library("gridExtra")
+library("grid")
+library("cowplot")
+library(data.table)
+library(metagenomeSeq)
+library(vegan)
+library(RVAideMemoire)
+library(dplyr)
+library(data.table)
+library(metagenomeSeq)
+```
+
+Loading in phyloseq objects, same objects as were used in the extraction comparison script.
+
+```{r phyloseq}
+ps.noncontam_symbiodinium_unmerged <- readRDS(file = "sym_unmerged.RDS")
+ps.noncontam_prok_unmerged <- readRDS(file = "prok_unmerged.RDS")
+ps.noncontam_fungi_unmerged <- readRDS(file = "fungi_unmerged.RDS")
+ps.noncontam_api_unmerged <- readRDS(file = "api_unmerged.RDS")
+```
+
+Merging extraction types for all four phyloseq objects.Mapping file for each marker needs to be corrected because merging samples by description messes up the rest of the columns. The fixed mapping files after merging are available in the same folder as this script.
+
+```{r merging}
+
+# will create new phyloseq object with corrected mapping file for each marker
+ps.noncontam_symbiodinium <- merge_samples(ps.noncontam_symbiodinium_unmerged,"Description")
+otu_table(ps.noncontam_symbiodinium) <- t(otu_table(ps.noncontam_symbiodinium)) # OTU table needs to be transformed due to effect of merging
+
+# merge both extraction types (by description) for the prokaryote phyloseq 
+ps.noncontam_prok <- merge_samples(ps.noncontam_prok_unmerged,"Description")
+otu_table(ps.noncontam_prok) <- t(otu_table(ps.noncontam_prok))
+
+# merge both extraction types (by description) for the fungi phyloseq
+ps.noncontam_fungi <- merge_samples(ps.noncontam_fungi_unmerged,"Description")
+otu_table(ps.noncontam_fungi) <- t(otu_table(ps.noncontam_fungi))
+
+# merge both extraction types for apicomplexa
+ps.noncontam_api <- merge_samples(ps.noncontam_api_unmerged,"Description")
+otu_table(ps.noncontam_api) <- t(otu_table(ps.noncontam_api))
+
+# now remake the actual phyloseq objects
+# symbiodinium new phyloseq
+otu_merged_sym <- otu_table(ps.noncontam_symbiodinium) # must make into dataframes first
+tax_merged_sym <- tax_table(ps.noncontam_symbiodinium)
+
+coral_sym_otus_phy_merged <-otu_table(otu_merged_sym,
+                                      taxa_are_rows = TRUE)
+
+coral_bleach_sym_metadata <-read.delim("sym_bleach_unbeached_map_merged.txt",
+                                       row.names=1)
+
+coral_bleach_sym_metadata_phy_merged <-sample_data(coral_bleach_sym_metadata)
+
+coral_bleach_sym_taxonomy_phy_merged <- tax_table(as.matrix(tax_merged_sym))
+
+coral_bleach_sym_sequences_merged <- readDNAStringSet("zotus_sym_R1_new.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+
+physeq_object_merged_sym <- phyloseq(coral_sym_otus_phy_merged, 
+                                     coral_bleach_sym_metadata_phy_merged, 
+                                     coral_bleach_sym_taxonomy_phy_merged,
+                                     coral_bleach_sym_sequences_merged)
+
+# prokaryote new phyloseq 
+otu_merged_prok <- otu_table(ps.noncontam_prok)
+tax_merged_prok <- tax_table(ps.noncontam_prok)
+
+coral_bac_otus_phy_merged <-otu_table(otu_merged_prok,
+                                      taxa_are_rows = TRUE)
+
+coral_bleach_bac_metadata <-read.delim("bact_bleached_merged.txt",
+                                       row.names=1)
+
+coral_bleach_bac_metadata_phy_merged <-sample_data(coral_bleach_bac_metadata)
+
+coral_bleach_bac_taxonomy_phy_merged <- tax_table(as.matrix(tax_merged_prok))
+
+coral_bleach_bac_sequences_merged <- readDNAStringSet("zotus_R1_Bac.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+
+physeq_object_merged_prok <- phyloseq(coral_bac_otus_phy_merged, 
+                                      coral_bleach_bac_metadata_phy_merged, 
+                                      coral_bleach_bac_taxonomy_phy_merged,
+                                      coral_bleach_bac_sequences_merged)
+# fungi new phyloseq
+otu_merged_fungi <- otu_table(ps.noncontam_fungi)
+tax_merged_fungi <- tax_table(ps.noncontam_fungi)
+
+coral_fungi_otus_phy_merged <-otu_table(otu_merged_fungi,
+                                        taxa_are_rows = TRUE)
+
+coral_fungi_metadata <-read.delim("fungi_merged_map_83120.txt",
+                                  row.names=1)
+
+coral_bleach_fungi_metadata_phy_merged <-sample_data(coral_fungi_metadata)
+
+coral_bleach_fungi_taxonomy_phy_merged <- tax_table(as.matrix(tax_merged_fungi))
+
+coral_bleach_fungi_sequences_merged <- readDNAStringSet("zotus_R1_fungi.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+
+physeq_object_merged_fungi <- phyloseq(coral_fungi_otus_phy_merged, 
+                                       coral_bleach_fungi_metadata_phy_merged, 
+                                       coral_bleach_fungi_taxonomy_phy_merged,
+                                       coral_bleach_fungi_sequences_merged)
+
+# Apicomplexa new phyloseq
+# apicomplexa
+otu_merged_api <- otu_table(ps.noncontam_api)
+tax_merged_api <- tax_table(ps.noncontam_api)
+
+coral_api_otus_phy_merged <-otu_table(otu_merged_api,
+                                        taxa_are_rows = TRUE)
+
+coral_api_metadata <-read.delim("bact_bleached_merged.txt",
+                                  row.names=1)
+
+coral_bleach_api_metadata_phy_merged <-sample_data(coral_api_metadata)
+
+coral_bleach_api_taxonomy_phy_merged <- tax_table(as.matrix(tax_merged_api))
+
+coral_bleach_api_sequences_merged <- readDNAStringSet("zotus_R1_bac.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+
+physeq_object_merged_api <- phyloseq(coral_api_otus_phy_merged, 
+                                       coral_bleach_api_metadata_phy_merged, 
+                                       coral_bleach_api_taxonomy_phy_merged,
+                                       coral_bleach_api_sequences_merged)
+
+
+
+```
+
+Additional filtering before making figures to ensure that correct samples from the four fully sampled corals. 
+
+```{r Additional filtering}
+
+physeq_object_merged_sym<- subset_samples (physeq_object_merged_sym, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+physeq_object_merged_sym
+
+
+# prokaryotes
+physeq_object_merged_prok<- subset_samples (physeq_object_merged_prok, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+physeq_object_merged_prok
+
+# fungi
+physeq_object_merged_fungi<- subset_samples (physeq_object_merged_fungi, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+physeq_object_merged_fungi
+
+# api
+physeq_object_merged_api<- subset_samples (physeq_object_merged_api, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+physeq_object_merged_api
+
+# remove otus with zero reads after subsetting the dataset to get accurate counts
+otu_table(physeq_object_merged_sym) <- otu_table(physeq_object_merged_sym)[which(rowSums(otu_table(physeq_object_merged_sym)) >= 0),]
+physeq_object_merged_sym
+otu_table(physeq_object_merged_prok) <- otu_table(physeq_object_merged_prok)[which(rowSums(otu_table(physeq_object_merged_prok)) > 0),]
+physeq_object_merged_prok
+otu_table(physeq_object_merged_fungi) <- otu_table(physeq_object_merged_fungi)[which(rowSums(otu_table(physeq_object_merged_fungi)) > 0),]
+physeq_object_merged_fungi
+
+```
+
+Making barplots - Figure 3. This code produces individual barplots, the barplots were combined outside of R to make figure 3. Colors to distinguish coral species and coral status were also added outside of R. 
+```{r Producing Barplots}
+# Create barplots - Symbiodinium
+merged_bars_sym <- merge_samples(physeq_object_merged_sym,"bar_label")
+sample_data(merged_bars_sym)$new_label <- factor(sample_data(merged_bars_sym)$bar_label)
+
+merged_bars_sym_subclade <- merged_bars_sym %>%
+  tax_glom(taxrank = "Subclade") %>%                     # agglomerate at subclade level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format                        
+  arrange(Subclade)                                      # Sort data frame alphabetically by subclade
+
+
+dat_bar_subclade_bp_total_sym <- data.table(merged_bars_sym_subclade)
+dat_bar_subclade_bp_total_sym[(Abundance <= 0.0005), Subclade:= "Other"] # merge the least abundant subclades to simplify the figure
+
+bar_symbiodinium = ggplot(dat_bar_subclade_bp_total_sym, aes(x = Sample , y = Abundance, fill = Subclade)) + 
+
+  theme(axis.text.x = element_text(angle = 90))+
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Cladocopium C_Unclassified" ="#CBD588",
+                               "Cladocopium C1" = "#5F7FC7", 
+                               "Cladocopium C15" = "orange",
+                               "Cladocopium C21" = "pink",
+                               "Cladocopium C3" = "#508578",
+                               "Cladocopium C42A" = "#CD9BCD",
+                               "Durusdinium D_Unclassified" = "#AD6F3B",
+                               "Durusdinium D1" = "#673770", 
+                               "Durusdinium D1A" = "#D14285",
+                               "Symbiodinium A1" = "#652926",
+                               "Unclassified" = "#C84248",
+                               "A1" = "#8569D5",
+                               "Other" = "blue"))+
+  theme(axis.title.x = element_blank()) +
+  theme(legend.key.height = unit(0.15, "cm"), legend.key.width = unit(0.25, "cm")) +
+  theme(legend.title = element_text(size = 9, face = "bold"), legend.text = element_text(size = 7)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+  theme(axis.title = element_text(angle = 0, size = 8, face = "bold")) +
+  theme(axis.title = element_text(angle = 0, size = 8, face = "bold")) +
+  theme(legend.position="none")+ # this was changed to right and legend was resized separately for fig 1
+  theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = .5, keyheight = .5,ncol =2))+
+  ylab("Relative Abundance") 
+plot(bar_symbiodinium)
+
+
+# Prokaryotes
+order_barplots_total_prok <- physeq_object_merged_prok %>%
+  tax_glom(taxrank = "Order") %>%                     # agglomerate at Order level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%
+  arrange(Order)
+
+dat_bar_order_bp_total_prok <- data.table(order_barplots_total_prok)
+dat_bar_order_bp_total_prok[(Abundance <= 0.07), Order:= "Other"] # merge lower taxa so legend is legible
+dat_bar_order_bp_total_prok
+
+bar_order_total_prok= ggplot(dat_bar_order_bp_total_prok, aes(x = bar_label, y = Abundance, fill = Order)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Actinomycetales" ="#CBD588",
+                               "Caldalkalibacillales" = "#5F7FC7", 
+                               "Altermonadales" = "orange",
+                               "Bacillales" = "#DA5724",
+                               "Chitinophagales" = "#508578",
+                               "Cytophagales" = "#CD9BCD",
+                               "Corynebacteriales" = "#AD6F3B",
+                               "Oceanospirillales" = "#673770", 
+                               "Pseudomonadales" = "#D14285",
+                               "Rhizobiales" = "#652926",
+                               "Rhodobacterales" = "#C84248",
+                               "Caulobacterales" = "#8569D5",
+                               "Cyanobacteriales" = "red",
+                               "Other" = "blue",
+                               "Sphingomonadales" = "yellow",
+                               "Kiloniellales" = "#5E738F",
+                               "Vibrionales" = "#D1A33D",
+                               "Lactobacillales" = "#8A7C64",
+                               "Unclassified" = "#599861",
+                               "Micavibrionales" = "pink",
+                               "Micrococcales" = "greenyellow",
+                               "Micropepsales" = "wheat",
+                               "Microtrichales" = "magenta1",
+                               "Peptostreptococcales-tissierellales" = "seagreen2",
+                               "Phyllobacterium" = "darksalmon",
+                               "Staphylococcales" = "firebrick2",
+                               "Streptomycetales" = "orange",
+                               "Tistrellales" = "darkmagenta",
+                               "Verrucomicrobiales" = "lightgrey",
+                               "Xanthomonadales" = "olivedrab4",
+                               "Flavobacterium" = "yellow",
+                               "Alteromonadales" = "darkviolet",
+                               "Entomoplasmatales" = "tan",
+                               "Vicinamibacterales" = "gray40",
+                               "Flavobacteriales" = "aquamarine2",
+                               "Myxococcales" = "yellowgreen",
+                               "Burkholderiales" = "navyblue"
+                               
+  ))+
+  theme(axis.title.x = element_blank()) + 
+  theme(legend.key.height = unit(0.15, "cm"), legend.key.width = unit(0.25, "cm")) +
+  theme(legend.title = element_text(size = 9, face = "bold"), legend.text = element_text(size = 7)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+  theme(axis.title = element_text(angle = 0, size = 8, face = "bold")) +
+  theme(legend.position="none")+ # this was changed to right and legend was resized separately for fig 1
+  guides(fill = guide_legend(reverse = FALSE, keywidth = .5, keyheight = .5,ncol=1))+
+  ylab("Relative Abundance") 
+plot(bar_order_total_prok)
+
+# Fungi
+order_barplots_fungi <- physeq_object_merged_fungi %>%
+  tax_glom(taxrank = "Order") %>%                     # agglomerate at class level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format                       # 
+  arrange(Order)           # Sort data frame alphabetically by Order
+order_barplots_fungi
+
+dat_bar_bp_fungi <- data.table(order_barplots_fungi)
+dat_bar_bp_fungi[(Abundance <= 0.05), Order:= "Other"]
+
+bar_order_fungi= ggplot(dat_bar_bp_fungi, aes(x = bar_label, y = Abundance, fill = Order)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Agaricomycetes" ="#CBD588",
+                               "Dothideomy" = "yellow", 
+                               "Eurotiomycetes" = "orange",
+                               "Exobasidiomycetes" = "#DA5724",
+                               "Sporidiobolales" = "#508578",
+                               "Malasseziomycetes" = "red",
+                               "Mortierellomycetes" = "#AD6F3B",
+                               "Mucoromycetes" = "#673770", 
+                               "Pezizomycetes" = "#D14285",
+                               "Sporidiobolaless" = "#652926",
+                               "Sordariomycetes" = "navyblue",
+                               "Tremellomycetes" = "#8569D5",
+                               "Ustilaginomycetes" = "darkmagenta",
+                               "Wallemiomycetes" = "blue",
+                               "Microbotryomycetes" = "purple",
+                               "Pezizales" = "#5E738F",
+                               "Cantharellales" = "#D1A33D",
+                               "Pleosporales" = "#8A7C64",
+                               "Polyporales" = "blue",
+                               "Russulales" = "coral1",
+                               "Saccharomycetales" = "greenyellow",
+                               "Sordariales" = "wheat",
+                               "Sordariomycetidae_Incertae_sedis" = "magenta1",
+                               "Thelephorales" = "seagreen2",
+                               "Trechisporales" = "darksalmon",
+                               "Trametes" = "firebrick2",
+                               "Agaricales" = "red",
+                               "Cantherellales"= "darkmagenta",
+                               "Dothideales" = "lightgrey",
+                               "Eurotiales" = "olivedrab4",
+                               "Helotiales" = "yellow",
+                               "Hypocreales" = "darkviolet",
+                               "Mortierellales" = "brown",
+                               "Other" = "gray40",
+                               "Holophagae" = "aquamarine2",
+                               "Orbiliomycetes" = "yellowgreen",
+                               "Chaetothyriales" = "#C84248",
+                               "Malasseziales" = "Orange",
+                               "Microascales" = "pink"
+                               
+  ))+
+  theme(axis.title.x = element_blank()) + 
+  theme(legend.key.height = unit(0.15, "cm"), legend.key.width = unit(0.25, "cm")) +
+  theme(legend.title = element_text(size = 8, face = "bold"), legend.text = element_text(size = 7)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+  theme(axis.title = element_text(angle = 0, size = 8, face = "bold")) +
+  theme(legend.position="none")+ # this was changed to right and legend was resized separately for fig 1
+  guides(fill = guide_legend(reverse = FALSE, keywidth = .5, keyheight = .5,ncol=1))+
+  ylab("Relative Abundance") 
+plot(bar_order_fungi)
+
+# Apicomplexa
+clade_barplots_api <- physeq_object_merged_api %>%
+  tax_glom(taxrank = "Clade") %>%                     # agglomerate at Clade level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format                       
+  arrange(Clade)           # Sort data frame alphabetically by clade
+clade_barplots_api
+
+dat_bar_bp_api <- data.table(clade_barplots_api)
+
+bar_order_api= ggplot(dat_bar_bp_api, aes(x = bar_label, y = Abundance, fill = Clade)) + 
+  #facet_wrap(~Stage, strip.position = "bottom") +
+  theme(axis.text.x = element_text(angle = 90))+
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("A" ="#CBD588",
+                               "B" = "yellow", 
+                               "C" = "orange",
+                               "D" = "#DA5724"
+                               
+  ))+
+
+  theme(axis.title.x = element_blank()) + 
+  theme(legend.key.height = unit(0.15, "cm"), legend.key.width = unit(0.25, "cm")) +
+  theme(legend.title = element_text(size = 8, face = "bold"), legend.text = element_text(size = 7)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+  #theme(axis.ticks.x = element_blank()) +
+  theme(axis.title = element_text(angle = 0, size = 8, face = "bold")) +
+  theme(legend.position="none")+
+  guides(fill = guide_legend(reverse = FALSE, keywidth = .5, keyheight = .5,ncol=1))+
+  ylab("Relative Abundance") 
+plot(bar_order_api)
+
+
+```
+
+Removing very low abundance samples. This is done because even after normalization, samples with very low abundance bias beta diversity analyses. After removing these samples, data are normalized using the metagenomeseq package and cumulative sum scaling.
+```{r Filtering and Normalization}
+# Removing low samples
+otu_table(physeq_object_merged_sym) <- subset(otu_table(physeq_object_merged_sym),select = -c(FJVB47A, FJVB47B)) # after removal - average depth 99523 (less than 1000 removed)
+
+otu_table(physeq_object_merged_prok) <- subset(otu_table(physeq_object_merged_prok),select = -c(FJVB36B,FJVB27,FJVB3B,FJVB45,FJVB42C,FJVB30B,FJVB21,FJVB47A,FJVB6B))# less thana 500 removed 2965 after removal
+
+otu_table(physeq_object_merged_fungi) <- subset(otu_table(physeq_object_merged_fungi),select = -c(FJVB49B)) # less than 750 removed, average 6807
+
+otu_table(physeq_object_merged_api) <- subset(otu_table(physeq_object_merged_api),select = -c(FJVB10B,FJVB22,FJVB33B,FJVB30A,FJVB14,FJVB42B
+)) # average 278 after removal of those with less than 35 reads per sample
+
+
+# Normalizing with metagenomeseq
+# fitting into a Gaussian Model using metagenomeSeq-------------
+physeq_object_filt_norm_sym = phyloseq_to_metagenomeSeq(physeq_object_merged_sym)
+physeq_object_filt_norm_sym<- phyloseq::phyloseq_to_metagenomeSeq(physeq_object_merged_sym)
+p_biom_sym<-cumNormStat(physeq_object_filt_norm_sym)
+biom_quant_sym<-cumNorm(physeq_object_filt_norm_sym, p=p_biom_sym)
+biom_quant_sym
+normFactors(biom_quant_sym)
+physeq_object_filt_norm_sym<-MRcounts(biom_quant_sym, norm=T)
+head(physeq_object_filt_norm_sym)
+
+#create physeq object with normalized otu table
+otu_table(physeq_object_merged_sym) <- otu_table(physeq_object_filt_norm_sym, taxa_are_rows = TRUE)
+otu_table(physeq_object_merged_sym)
+# prokaryotes
+physeq_object_filt_norm_prok = phyloseq_to_metagenomeSeq(physeq_object_merged_prok)
+p_biom_prok<-cumNormStat(physeq_object_filt_norm_prok)
+biom_quant_prok<-cumNorm(physeq_object_filt_norm_prok, p=p_biom_prok)
+biom_quant_prok
+normFactors(biom_quant_prok)
+physeq_object_filt_norm_prok<-MRcounts(biom_quant_prok, norm=T)
+
+head(physeq_object_filt_norm_prok)
+
+#create physeq object with normalized otu table
+otu_table(physeq_object_merged_prok) <- otu_table(physeq_object_filt_norm_prok, taxa_are_rows = TRUE)
+otu_table(physeq_object_merged_prok)
+# fungi
+physeq_object_filt_norm_fungi = phyloseq_to_metagenomeSeq(physeq_object_merged_fungi)
+p_biom_fungi<-cumNormStat(physeq_object_filt_norm_fungi)
+biom_quant_fungi<-cumNorm(physeq_object_filt_norm_fungi, p=p_biom_fungi)
+biom_quant_fungi
+normFactors(biom_quant_fungi)
+physeq_object_filt_norm_fungi<-MRcounts(biom_quant_fungi, norm=T)
+head(physeq_object_filt_norm_fungi)
+
+#create physeq object with normalized otu table
+otu_table(physeq_object_merged_fungi) <- otu_table(physeq_object_filt_norm_fungi, taxa_are_rows = TRUE)
+
+# Apicomplexa
+physeq_object_filt_norm_api = phyloseq_to_metagenomeSeq(physeq_object_merged_api)
+p_biom_api<-cumNormStat(physeq_object_filt_norm_api)
+biom_quant_api<-cumNorm(physeq_object_filt_norm_api, p=p_biom_api)
+biom_quant_api
+normFactors(biom_quant_api)
+physeq_object_filt_norm_api<-MRcounts(biom_quant_api, norm=T)
+head(physeq_object_filt_norm_api)
+
+#create physeq object with normalized otu table
+otu_table(physeq_object_merged_api) <- otu_table(physeq_object_filt_norm_api, taxa_are_rows = TRUE)
+otu_table(physeq_object_merged_api)
+```
+
+Exporting phyloseq objects with normalized OTU tables for use in further figures.
+```{r Export}
+# export as rds
+saveRDS(physeq_object_merged_sym, file = "symbio_normalized.rds")
+saveRDS(physeq_object_merged_fungi, file = "fungi_normalized.rds")
+saveRDS(physeq_object_merged_prok, file = "prok_normalized.rds")
+saveRDS(physeq_object_merged_api, file = "api_normalized.rds")
+
+```
