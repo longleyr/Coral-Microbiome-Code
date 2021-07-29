@@ -1,0 +1,305 @@
+---
+title: "Preprocessesing"
+author: "Reid Longley"
+date: "April 15, 2021"
+output: html_document
+---
+Load all packages needed for analysis and set seed for reproducibility
+```{r load packages, include=FALSE}
+set.seed(9297)
+## load packages
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+library(indicspecies)
+library(vegan)
+library(Biostrings)
+library(devtools)
+library(decontam)
+library(ggplot2)
+library("gridExtra")
+library("grid")
+library("cowplot")
+library(data.table)
+```
+
+## R Markdown
+
+Create phyloseq objects for each marker prior to merging extraction types and removing contaminants. Consensus taxonomy represent the consensus of BLAST, sintax, and RDP as outlined in the constax V2 paper: https://www.biorxiv.org/content/10.1101/2021.02.15.430803v1
+
+```{r phyloseq objects, echo = false}
+
+# Prokaryotes
+coral_bleach_bac_otus <- read.delim("otu_table_16S_UNOISE_R1.txt",
+                                    row.names=1) 
+
+
+coral_bleach_bac_otus_phy <-otu_table(coral_bleach_bac_otus,
+                                      taxa_are_rows = TRUE)
+
+coral_bleach_bac_otus_phy
+coral_bleach_bac_metadata <-read.delim("bacteria_bleach_map.txt",
+                                       row.names=1)
+
+coral_bleach_bac_metadata_phy <-sample_data(coral_bleach_bac_metadata)
+
+
+coral_bleach_bac_taxonomy<-read.delim("consensus_taxonomy_BAC.txt",
+                                      header=TRUE, 
+                                      row.names=1)
+
+
+coral_bleach_bac_taxonomy_phy <- tax_table(as.matrix(coral_bleach_bac_taxonomy))
+coral_bleach_bac_taxonomy_phy
+
+coral_bleach_bac_sequences <- readDNAStringSet("zotus_R1_Bac.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+coral_bleach_bac_sequences
+
+physeq_object_prok <- phyloseq(coral_bleach_bac_otus_phy, 
+                               coral_bleach_bac_metadata_phy, 
+                               coral_bleach_bac_taxonomy_phy,
+                               coral_bleach_bac_sequences)
+physeq_object_prok
+
+# Apicomplexa - extracted 18S sequences from Prokaryotes
+coral_bleach_api_otus <- read.delim("otu_table_16S_UNOISE_R1.txt",
+                                    row.names=1) 
+
+
+coral_bleach_api_otus_phy <-otu_table(coral_bleach_api_otus,
+                                      taxa_are_rows = TRUE)
+
+coral_bleach_api_otus_phy
+coral_bleach_api_metadata <-read.delim("bacteria_bleach_map.txt",
+                                       row.names=1)
+
+coral_bleach_api_metadata_phy <-sample_data(coral_bleach_api_metadata)
+
+
+coral_bleach_api_taxonomy<-read.delim("apicomplexa_tax.txt",
+                                      header=TRUE, 
+                                      row.names=1)
+
+
+coral_bleach_api_taxonomy_phy <- tax_table(as.matrix(coral_bleach_api_taxonomy))
+coral_bleach_api_taxonomy_phy
+
+coral_bleach_api_sequences <- readDNAStringSet("zotus_R1_Bac.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+coral_bleach_api_sequences
+
+physeq_object_api <- phyloseq(coral_bleach_api_otus_phy, 
+                               coral_bleach_api_metadata_phy, 
+                               coral_bleach_api_taxonomy_phy,
+                               coral_bleach_api_sequences)
+physeq_object_api
+
+
+# Fungi - after removing lab contaminants and non-target sequences
+coral_bleach_fungi_otus <- read.delim("otu_table_fungi_UNOISE.txt",
+                                    row.names=1) 
+
+
+coral_bleach_fungi_otus_phy <-otu_table(coral_bleach_fungi_otus,
+                                      taxa_are_rows = TRUE)
+
+coral_bleach_fungi_otus_phy
+coral_bleach_fungi_metadata <-read.delim("fungi_bleach_map.txt",
+                                       row.names=1)
+
+coral_bleach_fungi_metadata_phy <-sample_data(coral_bleach_fungi_metadata)
+
+
+coral_bleach_fungi_taxonomy<-read.delim("fungi_tax_final_91020.txt",
+                                      header=TRUE, 
+                                      row.names=1)
+
+
+coral_bleach_fungi_taxonomy_phy <- tax_table(as.matrix(coral_bleach_fungi_taxonomy))
+coral_bleach_fungi_taxonomy_phy
+
+coral_bleach_fungi_sequences <- readDNAStringSet("zotus_R1_fungi.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+coral_bleach_fungi_sequences
+
+physeq_object_fungi <- phyloseq(coral_bleach_fungi_otus_phy, 
+                               coral_bleach_fungi_metadata_phy, 
+                               coral_bleach_fungi_taxonomy_phy,
+                               coral_bleach_fungi_sequences)
+# Symbiodiniaceae
+coral_bleach_sym_otus <- read.delim("otu_table_sym_UNOISE.txt",
+                                      row.names=1) 
+
+
+coral_bleach_sym_otus_phy <-otu_table(coral_bleach_sym_otus,
+                                        taxa_are_rows = TRUE)
+
+coral_bleach_sym_otus_phy
+coral_bleach_sym_metadata <-read.delim("sym_bleach_unbleached_map.txt",
+                                         row.names=1)
+
+coral_bleach_sym_metadata_phy <-sample_data(coral_bleach_sym_metadata)
+
+
+coral_bleach_sym_taxonomy<-read.delim("consensus_taxonomy_SYM_9520.txt",
+                                        header=TRUE, 
+                                        row.names=1)
+
+
+coral_bleach_sym_taxonomy_phy <- tax_table(as.matrix(coral_bleach_sym_taxonomy))
+coral_bleach_sym_taxonomy_phy
+
+coral_bleach_sym_sequences <- readDNAStringSet("zotus_sym_R1_new.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+coral_bleach_sym_sequences
+
+physeq_object_symbiodinium <- phyloseq(coral_bleach_sym_otus_phy, 
+                                coral_bleach_sym_metadata_phy, 
+                                coral_bleach_sym_taxonomy_phy,
+                                coral_bleach_sym_sequences)
+physeq_object_symbiodinium
+
+```
+
+## Negative Contaminant Removal
+This step removes any ZOTUs that are present in a greater proportion of negative controls than in true samples based on a strategy laid out in the decontam paper: https://microbiomejournal.biomedcentral.com/articles/10.1186/s40168-018-0605-2
+```{r decontam, echo=FALSE}
+# Symbiodiniaceae 
+df_symbiodinium <- as.data.frame(sample_data(physeq_object_symbiodinium)) # Put sample_data into a ggplot-friendly data.frame
+df_symbiodinium$LibrarySize <- sample_sums(physeq_object_symbiodinium)
+#df_symbiodinium <- df[order(df$LibrarySize),]
+df_symbiodinium$Index <- seq(nrow(df_symbiodinium))
+ggplot(data=df_symbiodinium, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+
+# filter by prevelance 
+sample_data(physeq_object_symbiodinium)$is.neg <- sample_data(physeq_object_symbiodinium)$Sample_or_Control == "Control Sample"
+contamdf.prev_symbiodinium <- isContaminant(physeq_object_symbiodinium, method="prevalence", neg="is.neg", threshold = .05)
+table(contamdf.prev_symbiodinium$contaminant)
+
+
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa_symbiodinium <- transform_sample_counts(physeq_object_symbiodinium, function(abund) 1*(abund>0))
+ps.pa.neg_symbiodinium <- prune_samples(sample_data(ps.pa_symbiodinium)$Sample_or_Control == "Control Sample", ps.pa_symbiodinium)
+ps.pa.pos_symbiodinium <- prune_samples(sample_data(ps.pa_symbiodinium)$Sample_or_Control == "True Sample", ps.pa_symbiodinium)
+# Make data.frame of prevalence in positive and negative samples
+df.pa_symbiodinium <- data.frame(pa.pos_symbiodinium=taxa_sums(ps.pa.pos_symbiodinium), pa.neg_symbiodinium=taxa_sums(ps.pa.neg_symbiodinium),
+                                 contaminant=contamdf.prev_symbiodinium$contaminant)
+ggplot(data=df.pa_symbiodinium, aes(x=pa.neg_symbiodinium, y=pa.pos_symbiodinium, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+# remove contaminants
+ps.noncontam_symbiodinium <- prune_taxa(!contamdf.prev_symbiodinium$contaminant, physeq_object_symbiodinium)
+ps.noncontam_symbiodinium # with contaminants removed - none removed from symbio
+
+# Prokaryotes
+df_prok <- as.data.frame(sample_data(physeq_object_prok)) # Put sample_data into a ggplot-friendly data.frame
+df_prok$LibrarySize <- sample_sums(physeq_object_prok)
+#df_prok <- df[order(df$LibrarySize),]
+df_prok$Index <- seq(nrow(df_prok))
+ggplot(data=df_prok, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+
+# filter by prevelance 
+sample_data(physeq_object_prok)$is.neg <- sample_data(physeq_object_prok)$Sample_or_Control == "Control Sample"
+contamdf.prev_prok <- isContaminant(physeq_object_prok, method="prevalence", neg="is.neg", threshold = .05)
+table(contamdf.prev_prok$contaminant)
+
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa_prok <- transform_sample_counts(physeq_object_prok, function(abund) 1*(abund>0))
+ps.pa.neg_prok <- prune_samples(sample_data(ps.pa_prok)$Sample_or_Control == "Control Sample", ps.pa_prok)
+ps.pa.pos_prok <- prune_samples(sample_data(ps.pa_prok)$Sample_or_Control == "True Sample", ps.pa_prok)
+# Make data.frame of prevalence in positive and negative samples
+df.pa_prok <- data.frame(pa.pos_prok=taxa_sums(ps.pa.pos_prok), pa.neg_prok=taxa_sums(ps.pa.neg_prok),
+                         contaminant=contamdf.prev_prok$contaminant)
+ggplot(data=df.pa_prok, aes(x=pa.neg_prok, y=pa.pos_prok, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+# remove contaminants
+ps.noncontam_prok <- prune_taxa(!contamdf.prev_prok$contaminant, physeq_object_prok)
+ps.noncontam_prok # with contaminants removed
+
+# Fungi
+df_fungi <- as.data.frame(sample_data(physeq_object_fungi)) # Put sample_data into a ggplot-friendly data.frame
+df_fungi$LibrarySize <- sample_sums(physeq_object_fungi)
+#df_fungi <- df[order(df$LibrarySize),]
+df_fungi$Index <- seq(nrow(df_fungi))
+ggplot(data=df_fungi, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+
+# filter by prevelance 
+sample_data(physeq_object_fungi)$is.neg <- sample_data(physeq_object_fungi)$Sample_or_Control == "Control Sample"
+contamdf.prev_fungi <- isContaminant(physeq_object_fungi, method="prevalence", neg="is.neg", threshold = .05)
+table(contamdf.prev_fungi$contaminant)
+
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa_fungi <- transform_sample_counts(physeq_object_fungi, function(abund) 1*(abund>0))
+ps.pa.neg_fungi <- prune_samples(sample_data(ps.pa_fungi)$Sample_or_Control == "Control Sample", ps.pa_fungi)
+ps.pa.pos_fungi <- prune_samples(sample_data(ps.pa_fungi)$Sample_or_Control == "True Sample", ps.pa_fungi)
+# Make data.frame of prevalence in positive and negative samples
+df.pa_fungi <- data.frame(pa.pos_fungi=taxa_sums(ps.pa.pos_fungi), pa.neg_fungi=taxa_sums(ps.pa.neg_fungi),
+                         contaminant=contamdf.prev_fungi$contaminant)
+ggplot(data=df.pa_fungi, aes(x=pa.neg_fungi, y=pa.pos_fungi, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+# remove contaminants
+ps.noncontam_fungi <- prune_taxa(!contamdf.prev_fungi$contaminant, physeq_object_fungi)
+ps.noncontam_fungi # with contaminants removed
+
+# Apicomplexa - 18S reads pulled out from off-target amplification in 16S library
+df_api <- as.data.frame(sample_data(physeq_object_api)) # Put sample_data into a ggplot-friendly data.frame
+df_api$LibrarySize <- sample_sums(physeq_object_api)
+#df_api <- df[order(df$LibrarySize),]
+df_api$Index <- seq(nrow(df_api))
+ggplot(data=df_api, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+
+# filter by prevelance 
+sample_data(physeq_object_api)$is.neg <- sample_data(physeq_object_api)$Sample_or_Control == "Control Sample"
+contamdf.prev_api <- isContaminant(physeq_object_api, method="prevalence", neg="is.neg", threshold = .05)
+table(contamdf.prev_api$contaminant)
+
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa_api <- transform_sample_counts(physeq_object_api, function(abund) 1*(abund>0))
+ps.pa.neg_api <- prune_samples(sample_data(ps.pa_api)$Sample_or_Control == "Control Sample", ps.pa_api)
+ps.pa.pos_api <- prune_samples(sample_data(ps.pa_api)$Sample_or_Control == "True Sample", ps.pa_api)
+# Make data.frame of prevalence in positive and negative samples
+df.pa_api <- data.frame(pa.pos_api=taxa_sums(ps.pa.pos_api), pa.neg_api=taxa_sums(ps.pa.neg_api),
+                          contaminant=contamdf.prev_api$contaminant)
+ggplot(data=df.pa_api, aes(x=pa.neg_api, y=pa.pos_api, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+# remove contaminants
+ps.noncontam_api <- prune_taxa(!contamdf.prev_api$contaminant, physeq_object_api)
+ps.noncontam_api # with contaminants removed
+
+```
+
+Next, will subset to the four corals that will be analyzed further in this study, this will remove corals where sufficient samples were not collected as well as removing negative control samples.  This chunk will also export rds files to end the preprocessing step and 
+
+```{r subset and export, echo=FALSE}
+# Symbiodiniaceae
+ps.noncontam_symbiodinium<- subset_samples (ps.noncontam_symbiodinium, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+ps.noncontam_symbiodinium
+
+# Prokaryotes
+ps.noncontam_prok<- subset_samples (ps.noncontam_prok, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+ps.noncontam_prok
+
+# Fungi
+ps.noncontam_fungi<- subset_samples (ps.noncontam_fungi, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+ps.noncontam_fungi # two less samples due to lost samples in library prep
+
+# Apicomplexa
+ps.noncontam_api<- subset_samples (ps.noncontam_api, Species%in%c("Acropora_millepora","Montipora_digitata", "Porites_cylindrica", "Pocillopora_damicornis"))
+ps.noncontam_api
+
+# exporting fungi and prokaryote sequences to compare to terresttrial dataset
+otu_table(ps.noncontam_prok) <- otu_table(ps.noncontam_prok)[which(rowSums(otu_table(ps.noncontam_prok)) > 0),]
+ps.noncontam_prok
+otu_table(ps.noncontam_fungi) <- otu_table(ps.noncontam_fungi)[which(rowSums(otu_table(ps.noncontam_fungi)) > 0),]
+ps.noncontam_fungi
+
+writeXStringSet(refseq(ps.noncontam_fungi), file = "fungi_42021.fasta")
+writeXStringSet(refseq(ps.noncontam_prok), file = "prok_42021.fasta")
+# Write RDS files for use in other scripts
+saveRDS(ps.noncontam_symbiodinium,file = "sym_unmerged.RDS") # Symbiodiniaceae
+saveRDS(ps.noncontam_prok,file = "prok_unmerged.RDS") # Prokaryote
+saveRDS(ps.noncontam_fungi,file = "fungi_unmerged.RDS") # Fungi
+saveRDS(ps.noncontam_api,file = "api_unmerged.RDS")
+```
+
+This finishes the preprocessing steps, these files can be used to begin the extraction comparison script.
