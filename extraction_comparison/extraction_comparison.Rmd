@@ -1,0 +1,143 @@
+---
+title: "Extraction Differences Check"
+author: "Reid Longley"
+date: "April 15, 2021"
+output: html_document
+---
+Load Packages and Set Seed.
+
+```{r load packages, include=FALSE}
+set.seed(9295)
+## load packages
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+library(indicspecies)
+library(vegan)
+library(Biostrings)
+library(devtools)
+library(decontam)
+library(ggplot2)
+library("gridExtra")
+library("grid")
+library("cowplot")
+library(data.table)
+library(metagenomeSeq)
+library(vegan)
+library(RVAideMemoire)
+
+```
+
+
+
+Read in rds files created for phyloseq objects in preprocessing script
+```{r phyloseq}
+ps.noncontam_symbiodinium_unmerged <- readRDS(file = "sym_unmerged.RDS")
+ps.noncontam_prok_unmerged <- readRDS(file = "prok_unmerged.RDS")
+ps.noncontam_fungi_unmerged <- readRDS(file = "fungi_unmerged.RDS")
+ps.noncontam_api_unmerged <- readRDS(file = "api_unmerged.RDS")
+```
+
+
+Differences between extraction methods will be checked with PERMANOVA. Prior to the PERMANOVA, will normalize using cumulative sum scaling with metagenomeseq package https://www.nature.com/articles/nmeth.2658
+```{r normalization, include==FALSE}
+# Symbiodiniaceae 
+# fitting into a Gaussian Model using metagenomeSeq
+ps.noncontam_symbiodinium_norm_unmerged = phyloseq_to_metagenomeSeq(ps.noncontam_symbiodinium_unmerged)
+#otu_table(ps.noncontam_symbiodinium_norm_unmerged)
+p_biom_sym_unmerged <-cumNormStat(ps.noncontam_symbiodinium_norm_unmerged)
+biom_quant_sym_unmerged<-cumNorm(ps.noncontam_symbiodinium_norm_unmerged, p=p_biom_sym_unmerged)
+biom_quant_sym_unmerged
+normFactors(biom_quant_sym_unmerged)
+ps.noncontam_symbiodinium_norm_unmerged <-MRcounts(biom_quant_sym_unmerged, norm=T)
+#create physeq object with normalized otu table
+otu_table(ps.noncontam_symbiodinium_unmerged) <- otu_table(ps.noncontam_symbiodinium_norm_unmerged , taxa_are_rows = TRUE)
+
+# Prokaryotes
+ps.noncontam_prok_norm_unmerged = phyloseq_to_metagenomeSeq(ps.noncontam_prok_unmerged)
+#otu_table(ps.noncontam_prok_norm_unmerged)
+p_biom_prok_unmerged<-cumNormStat(ps.noncontam_prok_norm_unmerged)
+biom_quant_prok_unmerged<-cumNorm(ps.noncontam_prok_norm_unmerged, p=p_biom_prok_unmerged)
+biom_quant_prok_unmerged
+normFactors(biom_quant_prok_unmerged)
+ps.noncontam_prok_norm_unmerged <-MRcounts(biom_quant_prok_unmerged, norm=T)
+#create physeq object with normalized otu table
+otu_table(ps.noncontam_prok_unmerged) <- otu_table(ps.noncontam_prok_norm_unmerged , taxa_are_rows = TRUE)
+
+# Fungi
+ps.noncontam_fungi_norm_unmerged = phyloseq_to_metagenomeSeq(ps.noncontam_fungi_unmerged)
+#otu_table(ps.noncontam_fungi_norm_unmerged)
+p_biom_fungi_unmerged<-cumNormStat(ps.noncontam_fungi_norm_unmerged)
+biom_quant_fungi_unmerged<-cumNorm(ps.noncontam_fungi_norm_unmerged, p=p_biom_fungi_unmerged)
+biom_quant_fungi_unmerged
+normFactors(biom_quant_fungi_unmerged)
+ps.noncontam_fungi_norm_unmerged <-MRcounts(biom_quant_fungi_unmerged, norm=T)
+head(ps.noncontam_fungi_norm_unmerged)
+#create physeq object with normalized otu table
+otu_table(ps.noncontam_fungi_unmerged) <- otu_table(ps.noncontam_fungi_norm_unmerged , taxa_are_rows = TRUE)
+
+
+
+```
+
+
+
+
+This chunk will use PERMANOVA to assess the impact of extraction method on the microbial communities.The results are available in Supplementary Table 1.
+
+```{r PERMANOVA}
+
+# Symbiodiniaceae
+# make vegan objects 
+otu_symbiodinium_unmerged <- as.data.frame(otu_table(ps.noncontam_symbiodinium_unmerged))
+taxa_symbiodinium_unmerged <- as.data.frame(as.matrix(tax_table(ps.noncontam_symbiodinium_unmerged)))
+metadata_symbiodinium_unmerged <- as.data.frame(as.matrix(sample_data(ps.noncontam_symbiodinium_unmerged)))
+
+model.matrix(~ extraction_type, data=metadata_symbiodinium_unmerged)
+
+adonis(t(otu_symbiodinium_unmerged) ~ extraction_type, data=metadata_symbiodinium_unmerged, permutations=9999) # by = "margin"
+
+# symbiodinium betadisper
+vegan::vegdist(t(otu_symbiodinium_unmerged), method="bray") -> dist_otu_symbiodinium_unmerged
+
+permdisp_sym_ext<- betadisper(dist_otu_symbiodinium_unmerged, metadata_symbiodinium_unmerged$extraction_type)
+anova(permdisp_sym_ext, permutations = 9999)
+
+# Prokaryotes
+# make vegan objects 
+otu_prok_unmerged <- as.data.frame(otu_table(ps.noncontam_prok_unmerged))
+taxa_prok_unmerged <- as.data.frame(as.matrix(tax_table(ps.noncontam_prok_unmerged)))
+metadata_prok_unmerged <- as.data.frame(as.matrix(sample_data(ps.noncontam_prok_unmerged)))
+
+model.matrix(~ extraction_type, data=metadata_prok_unmerged)
+
+adonis(t(otu_prok_unmerged) ~ extraction_type, data=metadata_prok_unmerged, permutations=9999) # by = "margin"
+
+# prok betadisper
+vegan::vegdist(t(otu_prok_unmerged), method="bray") -> dist_otu_prok_unmerged
+
+permdisp_prok_ext<- betadisper(dist_otu_prok_unmerged, metadata_prok_unmerged$extraction_type)
+anova(permdisp_prok_ext, permutations = 9999)
+
+#Fungi
+
+# make vegan objects 
+otu_fungi_unmerged <- as.data.frame(otu_table(ps.noncontam_fungi_unmerged))
+taxa_fungi_unmerged <- as.data.frame(as.matrix(tax_table(ps.noncontam_fungi_unmerged)))
+metadata_fungi_unmerged <- as.data.frame(as.matrix(sample_data(ps.noncontam_fungi_unmerged)))
+
+model.matrix(~ extraction_type, data=metadata_fungi_unmerged)
+
+adonis(t(otu_fungi_unmerged) ~ extraction_type, data=metadata_fungi_unmerged, permutations=9999) # by = "margin"
+
+# fungi betadisper
+vegan::vegdist(t(otu_fungi_unmerged), method="bray") -> dist_otu_fungi_unmerged
+
+permdisp_fungi_ext<- betadisper(dist_otu_fungi_unmerged, metadata_fungi_unmerged$extraction_type)
+anova(permdisp_fungi_ext, permutations = 9999)
+
+# Due to low read counts, apicomplexa was not assesed because it would not be used for ordinations. The samples from different extractions needed to be merged due to such low read counts.
+
+```
+
+
