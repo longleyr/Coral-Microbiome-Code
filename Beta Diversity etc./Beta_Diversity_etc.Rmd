@@ -1,0 +1,906 @@
+---
+title: "Beta Diversity etc."
+author: "Reid Longley"
+date: "June 28, 2021"
+output: html_document
+---
+Loading packages.
+```{r load packages, include=FALSE}
+set.seed(9299)
+## load packages
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+library(indicspecies)
+library(vegan)
+library(Biostrings)
+library(devtools)
+library(decontam)
+library(ggplot2)
+library("gridExtra")
+library("grid")
+library("cowplot")
+library(data.table)
+library(metagenomeSeq)
+library(vegan)
+library(RVAideMemoire)
+library(dplyr)
+library(data.table)
+library(metagenomeSeq)
+library(multcompView)
+library(RColorBrewer)
+library(graphics)
+library(ggpubr)
+library(plyr)
+library(ade4)
+library(agricolae)
+library("dendextend")
+library(ape)
+library(DECIPHER)
+library(ggpubr)
+library(agricolae)
+```
+
+Load in RDS files of phyloseqs that were created in previous step (Barplots_Figure_3_Normalization.
+
+```{r load data}
+# export as rds
+physeq_object_merged_sym <- readRDS(file = "symbio_normalized.rds")
+physeq_object_merged_prok <- readRDS(file = "prok_normalized.rds")
+physeq_object_merged_fungi <- readRDS(file = "fungi_normalized.rds")
+physeq_object_merged_api <- readRDS(file = "api_normalized.rds")
+```
+
+Making ordinations with normalized data (Figure 4A-C)
+
+```{r Beta Diversity}
+
+# Symbiodiniaceae - Fig 4A
+ord_sym = ordinate(physeq_object_merged_sym, method ="PCoA", distance="bray")
+PCoA_symbiodinium  = plot_ordination(physeq_object_merged_sym, ord_sym, color="Species", shape = "Status" ) + 
+  theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) +
+  geom_point(size=2.5, alpha=0.9)+
+  scale_color_manual (values =c("Acropora_millepora" ="#E69F00", "Montipora_digitata" = "#D55E00", "Pocillopora_damicornis" = "#CBD588", "Porites_cylindrica" = "#0072B2"))+
+  theme_classic() +
+  theme(legend.position="left")
+plot(PCoA_symbiodinium)
+
+# Prokaryotes
+ord_prok = ordinate(physeq_object_merged_prok, method ="PCoA", distance="bray")
+PCoA_prok  = plot_ordination(physeq_object_merged_prok, ord_prok, color="Species", shape = "Status" ) + 
+  theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) +
+  geom_point(size=2.5, alpha=0.9) + 
+  scale_color_manual (values =c("Acropora_millepora" ="#E69F00", "Montipora_digitata" = "#D55E00", "Pocillopora_damicornis" = "#CBD588", "Porites_cylindrica" = "#0072B2"))+
+  theme_classic() +
+  theme(legend.position="none")
+plot(PCoA_prok)
+
+# Fungi
+ord_fungi = ordinate(physeq_object_merged_fungi, method ="PCoA", distance="bray")
+PCoA_fungi  = plot_ordination(physeq_object_merged_fungi, ord_fungi, color="Species", shape = "Status" ) + 
+  theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) +
+  geom_point(size=2.5, alpha=0.9) + 
+  #scale_shape_manual(values=1:7) +
+  scale_color_manual (values =c("Acropora_millepora" ="#E69F00", "Montipora_digitata" = "#D55E00", "Pocillopora_damicornis" = "#CBD588", "Porites_cylindrica" = "#0072B2"))+
+  theme_classic() +
+  theme(legend.position="none")
+plot(PCoA_fungi)
+```
+
+
+This chunk will prepare for the beta dispersion analysis below by creating a function for plotting beta dispersion and creating color palettes for the plots.
+```{r Beta Dispersion setup}
+# plot multivariate dispersion - function
+PlotBetadisper <- function(betadisp, value, color, my_labels){
+  # creating a label and dataframe
+  max(betadisp$distances + 0.1* max(betadisp$distances)) -> labels_y
+  data.frame(betadisp$group, betadisp$distances) -> df
+  colnames(df) <- c("value", "distance")
+  # plotting
+  betaplot <- ggplot(df, aes(x=value, y=distance)) +
+    geom_boxplot(outlier.colour="black", outlier.shape = 8, alpha=0.6, lwd = 0.7, color=color) +
+    geom_jitter(color="black", size=1.5, alpha=1.1) +
+    stat_summary(fun=mean, geom="point", shape=18, size=2.5, color="red", fill="red") +
+    stat_summary(geom = 'text', label = my_labels, fun= max, aes(y = labels_y), size=3, color="black") +
+    theme_classic() +
+    theme(strip.text.x = element_blank()) +
+    theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) + 
+    theme(axis.text.x = element_blank()) +
+    theme(axis.text.y = element_text(angle = 0, size = 8, hjust = 0.5, vjust = 0.5)) +
+    theme(axis.title = element_text(angle = 0, size = 9, face = "bold")) +
+    grids(linetype = "dashed") 
+  return(betaplot)
+}
+
+paletteCB4 = c("#E69F00", "#D55E00", "#CBD588","#0072B2")
+pie(rep(1, length(paletteCB4)), labels = sprintf("%d (%s)",
+                                                 seq_along(paletteCB4),paletteCB4), col = paletteCB4)
+
+paletteCB7 = c("grey70", "grey17")
+pie(rep(1, length(paletteCB7)), labels = sprintf("%d (%s)",
+                                                 seq_along(paletteCB7),paletteCB7), col = paletteCB7)
+
+
+
+
+
+```
+
+Plotting dispersion results (distances from centroids in above ordinations) for figure 4D-4I. This chunk will also make data frames for use in vegan PERMANOVA  analysis (Supplementary Table 2)
+
+```{r Beta Dispersion}
+
+
+otu_symbiodinium <- as.data.frame(otu_table(physeq_object_merged_sym))
+taxa_symbiodinium <- as.data.frame(as.matrix(tax_table(physeq_object_merged_sym)))
+metadata_symbiodinium <- as.data.frame(as.matrix(sample_data(physeq_object_merged_sym)))
+# Test the homogenity of group variances
+permdisp_symbiodinium_species <- betadisper(vegdist(t(otu_symbiodinium), method="bray"), metadata_symbiodinium$Species) 
+# check for statistical differences between dispersion with T test and bonferroni correction
+anova(permdisp_symbiodinium_species, permutations = 9999)
+permutest(permdisp_symbiodinium_species, permutations = 9999, pairwise = T) -> dist_sym_species
+round(p.adjust(anova(permdisp_symbiodinium_species, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+data.frame(multcompLetters(dist_sym_species$pairwise$observed)['Letters']) -> pair_sym_species
+
+# plot symbio - species figure 4D
+sym_betadisper_species <- PlotBetadisper(permdisp_symbiodinium_species, "Symbiodinium",paletteCB4, as.character(pair_sym_species$Letters)) + 
+  labs( y ="Distance to centroids",x= "")
+sym_betadisper_species
+
+# symbiodinium betadisper status
+# Test the homogenity of group variances
+permdisp_symbiodinium_status <- betadisper(vegdist(t(otu_symbiodinium), method="bray"), metadata_symbiodinium$Status) 
+# check for statistical differences between dispersion with T test and bonferroni correction
+anova(permdisp_symbiodinium_status, permutations = 9999)
+permutest(permdisp_symbiodinium_status, permutations = 9999, pairwise = T) -> dist_sym_status
+round(p.adjust(anova(permdisp_symbiodinium_status, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+sym_status <- boxplot(permdisp_symbiodinium_status)
+data.frame(multcompLetters(dist_sym_status$pairwise$observed)['Letters']) -> pair_sym_status
+
+# plot symbio - status figure 4E
+sym_betadisper_status <- PlotBetadisper(permdisp_symbiodinium_status, "Symbiodinium",paletteCB7, as.character(pair_sym_status$Letters)) + 
+  labs( y ="" ,x= "")
+sym_betadisper_status
+
+
+# Prokaryotes
+otu_prokaryote <- as.data.frame(otu_table(physeq_object_merged_prok))
+taxa_prokaryote <- as.data.frame(as.matrix(tax_table(physeq_object_merged_prok)))
+metadata_prokaryote <- as.data.frame(as.matrix(sample_data(physeq_object_merged_prok)))
+
+# Test the homogenity of group variances
+permdisp_prokaryote_species <- betadisper(vegdist(t(otu_prokaryote), method="bray"), metadata_prokaryote$Species) 
+# check for statistical differences between dispersion with T test and bonferroni correction
+anova(permdisp_prokaryote_species, permutations = 9999)
+permutest(permdisp_prokaryote_species, permutations = 9999, pairwise = T) -> dist_prok_species
+round(p.adjust(anova(permdisp_prokaryote_species, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+prok_species <- boxplot(permdisp_prokaryote_species)
+data.frame(multcompLetters(dist_prok_species$pairwise$observed)['Letters']) -> pair_prok_species
+permdisp_prokaryote_species
+# plot Prokaryotes - species figure 4F
+prok_betadisper_species <- PlotBetadisper(permdisp_prokaryote_species, "prokaryote",paletteCB4, as.character(pair_prok_species$Letters)) + 
+  labs( y ="", x = "")
+prok_betadisper_species
+
+# Prokaryotes status
+# Test the homogenity of group variances
+permdisp_prokaryote_status <- betadisper(vegdist(t(otu_prokaryote), method="bray"), metadata_prokaryote$Status) 
+# check for statistical differences between dispersion with T test and bonferroni correction
+anova(permdisp_prokaryote_status, permutations = 9999)
+permutest(permdisp_prokaryote_status, permutations = 9999, pairwise = T) -> dist_prok_status
+round(p.adjust(anova(permdisp_prokaryote_status, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+prok_status <- boxplot(permdisp_prokaryote_status)
+data.frame(multcompLetters(dist_prok_status$pairwise$observed)['Letters']) -> pair_prok_status
+
+# plot Prokaryotes - status figure 4G
+prok_betadisper_status <- PlotBetadisper(permdisp_prokaryote_status, "prokaryote",paletteCB7, as.character(pair_prok_status$Letters)) + 
+  labs( y ="", x= "")
+prok_betadisper_status
+
+# Fungi
+otu_fungi <- as.data.frame(otu_table(physeq_object_merged_fungi))
+taxa_fungi <- as.data.frame(as.matrix(tax_table(physeq_object_merged_fungi)))
+metadata_fungi <- as.data.frame(as.matrix(sample_data(physeq_object_merged_fungi)))
+
+# Test the homogenity of group variances
+permdisp_fungi_species <- betadisper(vegdist(t(otu_fungi), method="bray"), metadata_fungi$Species) 
+anova(permdisp_fungi_species, permutations = 9999)
+# check for statistical differences between dispersion with T test and bonferroni correction
+permutest(permdisp_fungi_species, permutations = 9999, pairwise = T) -> dist_fungi_species
+round(p.adjust(anova(permdisp_fungi_species, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+fungi_species <- boxplot(permdisp_fungi_species)
+data.frame(multcompLetters(dist_fungi_species$pairwise$observed)['Letters']) -> pair_fungi_species
+
+
+# plot Fungi - status figure 4H
+fungi_betadisper_species <- PlotBetadisper(permdisp_fungi_species, "fungi",paletteCB4, as.character(pair_fungi_species$Letters)) + 
+  labs( y ="", x= "")
+fungi_betadisper_species
+
+#fungi status
+# Test the homogenity of group variances
+permdisp_fungi_status <- betadisper(vegdist(t(otu_fungi), method="bray"), metadata_fungi$Status) 
+anova(permdisp_fungi_status, permutations = 9999)
+# check for statistical differences between dispersion with T test and bonferroni correction
+permutest(permdisp_fungi_status, permutations = 9999, pairwise = T) -> dist_fungi_status
+round(p.adjust(anova(permdisp_fungi_status, permutations = 9999)$`Pr(>F)`, "bonferroni"), 4)
+fungi_status <- boxplot(permdisp_fungi_status)
+data.frame(multcompLetters(dist_fungi_status$pairwise$observed)['Letters']) -> pair_fungi_status
+
+# plot Fungi - status figure 4I
+fungi_betadisper_status <- PlotBetadisper(permdisp_fungi_status, "fungi",paletteCB7, as.character(pair_fungi_status$Letters)) + 
+  labs( y ="", x= "")
+fungi_betadisper_status
+
+# Combining the plots, make one figure for ordination and one figure for for dispersion. Plots were then combined outside of R to make full figure 4.
+
+ordinations <- ggarrange(PCoA_symbiodinium,PCoA_prok,PCoA_fungi,ncol = 3, common.legend = TRUE,legend = "bottom", labels =c("A","B","C"))
+
+dispersions <- ggarrange(sym_betadisper_species,sym_betadisper_status,prok_betadisper_species,prok_betadisper_status,fungi_betadisper_species,fungi_betadisper_status,ncol = 6,widths =c(2.0,1.1,2.0,1.1,2.0,1.1),align=c("h"), labels =c("D","E","F","G","H","I"))
+
+```
+
+
+These PERMANOVAS and dispersion tests were created using the dataframes made above. The results of the overall PERMANOVA test are available in supplementary table 2.
+
+```{r PERMANOVA and Beta dispersion}
+                  # PERMANOVAS Overall - Supplementary Table 5
+# Symiodiniaceae 
+adonis(t(otu_symbiodinium) ~ Species + Status + Status : Species, data=metadata_symbiodinium, permutations=9999) 
+# Prokaryotes 
+adonis(t(otu_prokaryote) ~ Species + Status + Status : Species, data=metadata_prokaryote, permutations=9999) 
+# Fungi
+adonis(t(otu_fungi) ~ Species + Status + Status : Species, data=metadata_fungi, permutations=9999) 
+
+                  # Overall Dispersion Tets - Suppementary Table 5
+# Symbiodiniaceae 
+vegan::vegdist(t(otu_symbiodinium), method="bray") -> dist_otu_symbiodinium
+permdisp_symbiodinium_species <- betadisper(dist_otu_symbiodinium, metadata_symbiodinium$Species)
+permdisp_symbiodinium_status <- betadisper(dist_otu_symbiodinium, metadata_symbiodinium$Status)
+anova(permdisp_symbiodinium_status, permutations = 9999)
+anova(permdisp_symbiodinium_species, permutations = 9999)
+# Prokaryotes
+vegan::vegdist(t(otu_prokaryote), method="bray") -> dist_otu_prokaryote
+permdisp_prokaryote_species <- betadisper(dist_otu_prokaryote, metadata_prokaryote$Species)
+permdisp_prokaryote_status <- betadisper(dist_otu_prokaryote, metadata_prokaryote$Status)
+anova(permdisp_prokaryote_status, permutations = 9999)
+anova(permdisp_prokaryote_species, permutations = 9999)
+# Fungi
+vegan::vegdist(t(otu_fungi), method="bray") -> dist_otu_fungi
+permdisp_fungi_species <- betadisper(dist_otu_fungi, metadata_fungi$Species)
+permdisp_fungi_status <- betadisper(dist_otu_fungi, metadata_fungi$Status)
+anova(permdisp_fungi_status, permutations = 9999)
+anova(permdisp_fungi_species, permutations = 9999)
+
+                  # PERMANOVA by separate coral species to assess impact of Bleaching Status
+# first separate into individual species - Symbio
+phylo_sym_AM <- subset_samples(physeq_object_merged_sym, Species%in%c("Acropora_millepora"))
+phylo_sym_MD <- subset_samples(physeq_object_merged_sym, Species%in%c("Montipora_digitata"))
+phylo_sym_PC <- subset_samples(physeq_object_merged_sym, Species%in%c("Porites_cylindrica"))
+phylo_sym_PD <- subset_samples(physeq_object_merged_sym, Species%in%c("Pocillopora_damicornis"))
+
+
+#Acropora
+otu_sym_AM <- as.data.frame(otu_table(phylo_sym_AM))
+metadata_sym_AM <- as.data.frame(as.matrix(sample_data(phylo_sym_AM)))
+adonis(t(otu_sym_AM) ~ Status, data=metadata_sym_AM, permutations=9999) 
+vegan::vegdist(t(otu_sym_AM), method="bray") -> dist_otu_sym_AM
+permdisp_sym_AM <- betadisper(dist_otu_sym_AM, metadata_sym_AM$Status)
+anova(permdisp_sym_AM, permutations = 9999)
+# Montipora
+otu_sym_MD <- as.data.frame(otu_table(phylo_sym_MD))
+metadata_sym_MD <- as.data.frame(as.matrix(sample_data(phylo_sym_MD)))
+adonis(t(otu_sym_MD) ~ Status, data=metadata_sym_MD, permutations=9999) 
+vegan::vegdist(t(otu_sym_MD), method="bray") -> dist_otu_sym_MD
+permdisp_sym_MD <- betadisper(dist_otu_sym_MD, metadata_sym_MD$Status)
+anova(permdisp_sym_MD, permutations = 9999)
+# Pocillopora
+otu_sym_PD <- as.data.frame(otu_table(phylo_sym_PD))
+metadata_sym_PD <- as.data.frame(as.matrix(sample_data(phylo_sym_PD)))
+adonis(t(otu_sym_PD) ~ Status, data=metadata_sym_PD, permutations=9999) 
+vegan::vegdist(t(otu_sym_PD), method="bray") -> dist_otu_sym_PD
+permdisp_sym_PD <- betadisper(dist_otu_sym_PD, metadata_sym_PD$Status)
+anova(permdisp_sym_PD, permutations = 9999)
+# Porites
+otu_sym_PC <- as.data.frame(otu_table(phylo_sym_PC))
+metadata_sym_PC <- as.data.frame(as.matrix(sample_data(phylo_sym_PC)))
+adonis(t(otu_sym_PC) ~ Status, data=metadata_sym_PC, permutations=9999) 
+vegan::vegdist(t(otu_sym_PC), method="bray") -> dist_otu_sym_PC
+permdisp_sym_PC <- betadisper(dist_otu_sym_PC, metadata_sym_PC$Status)
+anova(permdisp_sym_PC, permutations = 9999)
+
+# first separate into individual species - Prok
+phylo_prok_AM <- subset_samples(physeq_object_merged_prok, Species%in%c("Acropora_millepora"))
+phylo_prok_MD <- subset_samples(physeq_object_merged_prok, Species%in%c("Montipora_digitata"))
+phylo_prok_PC <- subset_samples(physeq_object_merged_prok, Species%in%c("Porites_cylindrica"))
+phylo_prok_PD <- subset_samples(physeq_object_merged_prok, Species%in%c("Pocillopora_damicornis"))
+
+
+#Acropora
+otu_prok_AM <- as.data.frame(otu_table(phylo_prok_AM))
+metadata_prok_AM <- as.data.frame(as.matrix(sample_data(phylo_prok_AM)))
+adonis(t(otu_prok_AM) ~ Status, data=metadata_prok_AM, permutations=9999) 
+vegan::vegdist(t(otu_prok_AM), method="bray") -> dist_otu_prok_AM
+permdisp_prok_AM <- betadisper(dist_otu_prok_AM, metadata_prok_AM$Status)
+anova(permdisp_prok_AM, permutations = 9999)
+# Montipora
+otu_prok_MD <- as.data.frame(otu_table(phylo_prok_MD))
+metadata_prok_MD <- as.data.frame(as.matrix(sample_data(phylo_prok_MD)))
+adonis(t(otu_prok_MD) ~ Status, data=metadata_prok_MD, permutations=9999) 
+vegan::vegdist(t(otu_prok_MD), method="bray") -> dist_otu_prok_MD
+permdisp_prok_MD <- betadisper(dist_otu_prok_MD, metadata_prok_MD$Status)
+anova(permdisp_prok_MD, permutations = 9999)
+# Pocillopora
+otu_prok_PD <- as.data.frame(otu_table(phylo_prok_PD))
+metadata_prok_PD <- as.data.frame(as.matrix(sample_data(phylo_prok_PD)))
+adonis(t(otu_prok_PD) ~ Status, data=metadata_prok_PD, permutations=9999) 
+vegan::vegdist(t(otu_prok_PD), method="bray") -> dist_otu_prok_PD
+permdisp_prok_PD <- betadisper(dist_otu_prok_PD, metadata_prok_PD$Status)
+anova(permdisp_prok_PD, permutations = 9999)
+# Porites
+otu_prok_PC <- as.data.frame(otu_table(phylo_prok_PC))
+metadata_prok_PC <- as.data.frame(as.matrix(sample_data(phylo_prok_PC)))
+adonis(t(otu_prok_PC) ~ Status, data=metadata_prok_PC, permutations=9999) 
+vegan::vegdist(t(otu_prok_PC), method="bray") -> dist_otu_prok_PC
+permdisp_prok_PC <- betadisper(dist_otu_prok_PC, metadata_prok_PC$Status)
+anova(permdisp_prok_PC, permutations = 9999)
+
+# first separate into individual species - Fungi
+phylo_fungi_AM <- subset_samples(physeq_object_merged_fungi, Species%in%c("Acropora_millepora"))
+phylo_fungi_MD <- subset_samples(physeq_object_merged_fungi, Species%in%c("Montipora_digitata"))
+phylo_fungi_PC <- subset_samples(physeq_object_merged_fungi, Species%in%c("Porites_cylindrica"))
+phylo_fungi_PD <- subset_samples(physeq_object_merged_fungi, Species%in%c("Pocillopora_damicornis"))
+
+
+#Acropora
+otu_fungi_AM <- as.data.frame(otu_table(phylo_fungi_AM))
+metadata_fungi_AM <- as.data.frame(as.matrix(sample_data(phylo_fungi_AM)))
+adonis(t(otu_fungi_AM) ~ Status, data=metadata_fungi_AM, permutations=9999) 
+vegan::vegdist(t(otu_fungi_AM), method="bray") -> dist_otu_fungi_AM
+permdisp_fungi_AM <- betadisper(dist_otu_fungi_AM, metadata_fungi_AM$Status)
+anova(permdisp_fungi_AM, permutations = 9999)
+# Montipora
+otu_fungi_MD <- as.data.frame(otu_table(phylo_fungi_MD))
+metadata_fungi_MD <- as.data.frame(as.matrix(sample_data(phylo_fungi_MD)))
+adonis(t(otu_fungi_MD) ~ Status, data=metadata_fungi_MD, permutations=9999) 
+vegan::vegdist(t(otu_fungi_MD), method="bray") -> dist_otu_fungi_MD
+permdisp_fungi_MD <- betadisper(dist_otu_fungi_MD, metadata_fungi_MD$Status)
+anova(permdisp_fungi_MD, permutations = 9999)
+# Pocillopora
+otu_fungi_PD <- as.data.frame(otu_table(phylo_fungi_PD))
+metadata_fungi_PD <- as.data.frame(as.matrix(sample_data(phylo_fungi_PD)))
+adonis(t(otu_fungi_PD) ~ Status, data=metadata_fungi_PD, permutations=9999) 
+vegan::vegdist(t(otu_fungi_PD), method="bray") -> dist_otu_fungi_PD
+permdisp_fungi_PD <- betadisper(dist_otu_fungi_PD, metadata_fungi_PD$Status)
+anova(permdisp_fungi_PD, permutations = 9999)
+# Porites
+otu_fungi_PC <- as.data.frame(otu_table(phylo_fungi_PC))
+metadata_fungi_PC <- as.data.frame(as.matrix(sample_data(phylo_fungi_PC)))
+adonis(t(otu_fungi_PC) ~ Status, data=metadata_fungi_PC, permutations=9999) 
+vegan::vegdist(t(otu_fungi_PC), method="bray") -> dist_otu_fungi_PC
+permdisp_fungi_PC <- betadisper(dist_otu_fungi_PC, metadata_fungi_PC$Status)
+anova(permdisp_fungi_PC, permutations = 9999)
+
+```
+
+This analysis was performed on all pairwise comparisons (sym-prok, prok-fungi, etc..), see supplementary table 3. However, the only significant correlation was between Symbiodinaceae and  Prokaryotes (Figure 4J-4L). For this reason, only sym-prok was analyzed with a graph and only this code is shown. However, all other pairs were analyzed in the same way.
+
+Code modified from http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-Section-01-Main-Lab.html#procrustes-and-ggplot2
+
+```{r procrustes analysis}
+
+# have to remove the same samples from each phyloseq so that the ordinations match
+
+phylo1_sym <- physeq_object_merged_sym
+otu_table(phylo1_sym) <- subset(otu_table(phylo1_sym),
+                                select = -c(FJVB36B,FJVB3B,FJVB45,FJVB27,FJVB42C,FJVB30B,FJVB21,FJVB6B
+                                ))
+
+phylo2_prok <- physeq_object_merged_prok
+otu_table(phylo2_prok) <- subset(otu_table(phylo2_prok),select = -c(FJVB47B))
+
+phylo1_sym
+phylo2_prok
+
+# Ordinate each phyloseq object
+sym1.ord <- ordinate(physeq = phylo1_sym,method = "PCoA",distance = "bray")
+prok1.ord <- ordinate(physeq = phylo2_prok,method = "PCoA",distance = "bray")
+
+
+# Extract vectors and incorporate sample data
+sym1.ord.df <- data.frame(sym1.ord$vectors)
+prok1.ord.df <- data.frame(prok1.ord$vectors)
+
+sym.dim1 <- dim(sample_data(phylo1_sym))[2]+1
+sym.dim2 <- as.numeric(dim(sample_data(phylo1_sym))[2]+dim(sym1.ord.df)[2])
+prok.dim1 <- dim(sample_data(phylo2_prok))[2]+1
+prok.dim2 <- as.numeric(dim(sample_data(phylo2_prok))[2]+dim(prok1.ord.df)[2])
+
+sample_data(phylo1_sym)[,c(sym.dim1:sym.dim2)] <- sym1.ord.df
+sample_data(phylo2_prok)[,c(prok.dim1:prok.dim2)] <- prok1.ord.df
+
+phylo1.ord <- data.frame(sample_data(phylo1_sym))
+phylo2.ord <- data.frame(sample_data(phylo2_prok))
+
+# Order both tables by sample ID
+phylo1.ord <- phylo1.ord[ order(row.names(phylo1.ord)), ]
+phylo2.ord <- phylo2.ord[ order(row.names(phylo2.ord)), ]
+
+rownames(phylo1.ord) == rownames(phylo2.ord) # double check
+
+# Run procrustes analysis
+pro3 <- protest(phylo1.ord[, c("Axis.1", "Axis.2")],
+                phylo2.ord[, c("Axis.1", "Axis.2")],
+                scores = "sites", permutations = how(nperm = 9999))
+pro3
+
+# make plot of procrustes analysis
+pro.p <- data.frame(rda1=pro3$Yrot[,1],
+                    rda2=pro3$Yrot[,2],xrda1=pro3$X[,1],
+                    xrda2=pro3$X[,2])
+Dist <- data.frame(sample_data(phylo1_sym)[,12])
+pro.p <- merge(pro.p,Dist,by="row.names")
+rownames(pro.p) <- pro.p$Row.names
+pro.p <- pro.p[ -c(1) ]
+CoralSp <- data.frame(sample_data(phylo1_sym)[,"Species"])
+pro.p <- merge(pro.p,CoralSp,by="row.names")
+pro.p
+
+# plot procrustes results
+pro.plot <- ggplot(pro.p) +
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        axis.line = element_line(),
+        axis.text.x.bottom =  element_blank(), 
+        axis.title = element_blank()) +
+  geom_point(aes(x=rda1, y=rda2, colour=Species)) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=Species)) +
+  geom_segment(aes(x=xrda1,y=xrda2,xend=rda1,yend=rda2,colour=Species),
+               arrow=arrow(length=unit(0.2,"cm"))) +
+  geom_hline(yintercept = 0,linetype="dashed") +
+  geom_vline(xintercept = 0,linetype="dashed") +
+  geom_abline(slope = -1/pro3$rotation[1,2]) +
+  geom_abline(slope = pro3$rotation[1,2]) +
+  scale_color_manual(values=c("#E69F00", "#D55E00", 
+                              "#CBD588", "#0072B2"), name = "Species")
+pro.plot
+
+# This csv file is written to add metadata from the mapping file to group the residuals (was just easier than editing the dataframe in R). The final csv file for making the pro_resid dataframe is available in the same folder as the script.
+
+
+#write.csv(residuals(pro3), file = "procrustes_resid.csv")
+pro_resid <- read.csv("procrustes_resid.csv")
+
+
+# residuals plot by coral species
+# stats test on residuals by coral host
+pro_resid_species <- aov( residual~ Species, data= pro_resid)
+HSD.test(pro_resid_species, "Species") -> tukeyHSD_species
+tukeyHSD_species # letters were manually added to plot
+# stats test on rediuals by coral status
+pro_resid_status <- aov( residual~ Status, data= pro_resid)
+HSD.test(pro_resid_status, "Status") -> tukeyHSD_status
+tukeyHSD_status # letters were manually added to plot
+
+# plot residuals by coral status
+ resid_status_plot <- ggplot(pro_resid, aes(x=Status, y=residual,colour = Status)) +
+    geom_boxplot(outlier.colour="black", outlier.shape = 8, alpha=0.6, lwd = 0.7) +
+    geom_jitter(color="black", size=1.5, alpha=1.1) +
+    stat_summary(fun=mean, geom="point", shape=18, size=2.5, color="red", fill="red") +
+    #stat_summary(geom = 'text', label = my_labels, fun= max, aes(y = labels_y), size=3, color="black") +
+    theme_classic() +
+   scale_color_manual(values=c("grey70", "grey17"), name = "Status")+
+    theme(strip.text.x = element_text(size = 9, face = "bold")) +
+    theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) + 
+   theme(axis.text.x.bottom =  element_blank()) +
+    theme(axis.text.y = element_text(angle = 0, size = 8, hjust = 0.5, vjust = 0.5)) +
+    theme(axis.title = element_text(angle = 0, size = 9, face = "bold")) +
+   theme(legend.position = "none")+
+    grids(linetype = "dashed") 
+ 
+resid_status_plot
+
+
+
+# plot residuals by coral species
+resid_species_plot <- ggplot(pro_resid, aes(x=Species, y=residual,colour = Species)) +
+    geom_boxplot(outlier.colour="black", outlier.shape = 8, alpha=0.6, lwd = 0.7) +
+    geom_jitter(color="black", size=1.5, alpha=1.1) +
+    stat_summary(fun=mean, geom="point", shape=18, size=2.5, color="red", fill="red") +
+    #stat_summary(geom = 'text', label = my_labels, fun= max, aes(y = labels_y), size=3, color="black") +
+    theme_classic() +
+   scale_color_manual(values=c("#E69F00", "#D55E00", "#CBD588","#0072B2"), name = "Species")+
+    theme(strip.text.x = element_text(size = 9, face = "bold")) +
+    theme(plot.title = element_text(size = 10, face = "bold", hjust = 0.5)) + 
+    theme(axis.text.x.bottom =  element_blank()) +
+    theme(axis.text.y = element_text(angle = 0, size = 8, hjust = 0.5, vjust = 0.5)) +
+    theme(axis.title = element_text(angle = 0, size = 9, face = "bold")) +
+  theme(legend.position = "none")+
+    grids(linetype = "dashed") 
+
+resid_species_plot
+procrustes_combo<- ggarrange(pro.plot,resid_species_plot,resid_status_plot,ncol = 3,widths =c(2.0,2.0,1.0),align=c("h"), labels =c("J","K","L"))
+procrustes_combo # labels for significance added outside of R
+```
+
+
+
+Tanglegrams: The tanglegrams from unbleached samples make up figure 5, and bleached samples make up supplementary figure 2.  Any files needed to load are available in the folder with this R markdown file. 
+
+```{r Tanglegrams Unbleached}
+# need to make sample names match the tree - OTU table was exported and names of samples were changed so that they match the tree file of the coral samples. The files with the properly named OTU tables and tree files are available in the same folder as this script.
+
+physeq_object_symbiodinium_unbleached <- subset_samples(physeq_object_merged_sym, Status%in%c("unbleached"))
+#write.csv(otu_table(physeq_object_symbiodinium_unbleached),file ="tree_samples_symbiodinium_unbleached.csv")
+#otu_symbiodinium_unbleached <- as.data.frame(otu_table(physeq_object_symbiodinium_unbleached))
+#write.csv(otu_symbiodinium_unbleached, file ="tree_samples_symbiodinium_unbleached.csv",row.names=FALSE)
+otu_symbiodinium_unbleached <- read.csv("tree_samples_symbiodinium_unbleached.csv",check.names = FALSE,row.names = 1)
+
+
+#  Get Bray distance for tree
+vegan::vegdist(t(otu_symbiodinium_unbleached), method="bray") -> symbiodinium_unbleached_dist
+symbiodinium_unbleached_dist <- as.dist(symbiodinium_unbleached_dist)
+
+# This step imports thre tree of coral samples.
+coral_tree_dendro_symbiodinium_unbleached <- ReadDendrogram("Coral_Cox1_sym_unbleached.nwk")
+
+# generating unbleached symbiodinium clusters/ dendrogram
+symbiodinium_unbleached_clust <-hclust(symbiodinium_unbleached_dist,"complete")
+symbiodinium_unbleached_dendro <- as.dendrogram(symbiodinium_unbleached_clust)
+
+dend_list_symbiodinium_unbleached <- dendlist(as.dendrogram(coral_tree_dendro_symbiodinium_unbleached), symbiodinium_unbleached_dendro)
+
+symbiodinium_unbleached_labels <- symbiodinium_unbleached_dendro %>% labels
+symbiodinium_coral_unbleached_labels <- coral_tree_dendro_symbiodinium_unbleached %>% labels
+
+dend_list_unt_symbiodinium_unbleached<- dend_list_symbiodinium_unbleached %>% untangle(method = "random")
+
+
+# If this color list does not match what appears in figure 6 it is because the tanglegram was flipped, reversing the colors list will make the tanglegrams match. The legend was made in adobe pro.
+color_list_sym <- c("#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2")
+
+
+ dend_list_unt_symbiodinium_unbleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                                      common_subtrees_color_branches = FALSE,
+                                                      highlight_distinct_edges=FALSE, 
+                                                      highlight_branches_lwd=FALSE,
+                                                      color_lines = color_list_sym,
+                                                      main_left = "Coral\nPhylogeny",
+                                                      main_right = "Community\nDissimilarity",
+                                                      main="Unbleached Symbiodinaceae",
+                                                      sub = paste("entanglement =", round(entanglement(dend_list_unt_symbiodinium_unbleached,
+                                                                                                       L=1, leaves_matching_method = "labels"), 2)),
+                                                      hang = FALSE, 
+                                                      rank_branches = TRUE,
+                                                      type = "r",
+                                                      margin_inner=0.25,
+                                                      lwd=2.5,
+                                                      lab.cex = 1,
+                                                      cex_main = 1.2,
+                                                      cex_sub=1,
+                                                      center = FALSE)
+
+
+# Prokaryote unbleached tanglegram
+physeq_object_prok_unbleached <- subset_samples(physeq_object_merged_prok, Status%in%c("unbleached"))
+
+#write.csv(otu_table(physeq_object_prok_unbleached),file ="tree_samples_prok_unbleached.csv")
+# fix labels to match coral tree in excel (this file is available in the folder)
+otu_prok_unbleached <- read.csv("tree_samples_prok_unbleached.csv",check.names = FALSE,row.names = 1)
+otu_prok_unbleached
+
+vegan::vegdist(t(otu_prok_unbleached), method="bray") -> prok_unbleached_dist
+prok_unbleached_dist <- as.dist(prok_unbleached_dist)
+
+coral_tree_dendro_prok_unbleached <- ReadDendrogram("Coral_Cox1_prok.nwk")
+
+# generating unbleached prok clusters from bray curtis distance
+prok_unbleached_clust <-hclust(prok_unbleached_dist,"complete")
+
+prok_unbleached_dendro <- as.dendrogram(prok_unbleached_clust)
+
+dend_list_prok_unbleached <- dendlist(as.dendrogram(coral_tree_dendro_prok_unbleached), prok_unbleached_dendro)
+
+prok_unbleached_labels <- prok_unbleached_dendro %>% labels
+prok_coral_unbleached_labels <- coral_tree_dendro_prok_unbleached %>% labels
+
+dend_list_unt_prok_unbleached<- dend_list_prok_unbleached %>% untangle(method = "random")
+
+color_list_prok <- c("#0072B2","#0072B2","#0072B2","#0072B2","#0072B2", "#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00", "#CBD588","#CBD588","#CBD588","#CBD588","#CBD588")
+
+dend_list_unt_prok_unbleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                                      common_subtrees_color_branches = FALSE,
+                                                      highlight_distinct_edges=FALSE, 
+                                                      highlight_branches_lwd=FALSE,
+                                                      color_lines = color_list_prok,
+                                                      main_left = "Coral\nPhylogeny",
+                                                      main_right = "Community\nDissimilarity",
+                                                      main="Unbleached Prokaryotes",
+                                                      sub = paste("entanglement =", round(entanglement(dend_list_unt_prok_unbleached,
+                                                                                                       L=1, leaves_matching_method = "labels"), 2)),
+                                                      hang = FALSE, 
+                                                      rank_branches = TRUE,
+                                                      type = "r",
+                                                      margin_inner=0.25,
+                                                      lwd=2.5,
+                                                      lab.cex = 1,
+                                                      cex_main = 1.2,
+                                                      cex_sub=1,
+                                                      center = FALSE)
+# Fungi unbleached tanglegrams
+
+physeq_object_fungi_unbleached <- subset_samples(physeq_object_merged_fungi, Status%in%c("unbleached"))
+
+#write.csv(otu_table(physeq_object_fungi_unbleached),file ="tree_samples_fungi_unbleached.csv")
+# fix labels to match coral tree in excel (file available in folder)
+otu_fungi_unbleached <- read.csv("tree_samples_fungi_unbleached.csv",check.names = FALSE,row.names = 1)
+
+vegan::vegdist(t(otu_fungi_unbleached), method="bray") -> fungi_unbleached_dist
+fungi_unbleached_dist <- as.dist(fungi_unbleached_dist)
+
+# Read in coral tree as dendrogram
+coral_tree_dendro_fungi_unbleached <- ReadDendrogram("Coral_Cox1_unbleached_fungi.nwk")
+
+# generating unbleached fungi clusters
+fungi_unbleached_clust <-hclust(fungi_unbleached_dist,"complete")
+
+fungi_unbleached_dendro <- as.dendrogram(fungi_unbleached_clust)
+dend_list_fungi_unbleached <- dendlist(as.dendrogram(coral_tree_dendro_fungi_unbleached), fungi_unbleached_dendro)
+
+fungi_unbleached_labels <- fungi_unbleached_dendro %>% labels
+fungi_coral_unbleached_labels <- coral_tree_dendro_fungi_unbleached %>% labels
+
+
+
+dend_list_unt_fungi_unbleached<- dend_list_fungi_unbleached %>% untangle(method = "random") # untangle first
+color_list_fungi <- c("#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00", "#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00", "#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2" )
+
+dend_list_unt_fungi_unbleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                              common_subtrees_color_branches = FALSE,
+                                              highlight_distinct_edges=FALSE, 
+                                              highlight_branches_lwd=FALSE,
+                                              color_lines = color_list_fungi,
+                                              main_left = "Coral\nPhylogeny",
+                                              main_right = "Community\nDissimilarity",
+                                              main="Unbleached Fungi",
+                                              sub = paste("entanglement =", round(entanglement(dend_list_unt_fungi_unbleached,
+                                                                                               L=1, leaves_matching_method = "labels"), 2)),
+                                              hang = FALSE, 
+                                              rank_branches = TRUE,
+                                              type = "r",
+                                              margin_inner=0.25,
+                                              lwd=2.5,
+                                              lab.cex = 1,
+                                              cex_main = 1.2,
+                                              cex_sub=1,
+                                              center = FALSE)
+
+# Apicomplexa unbleached tanglegram
+physeq_object_api_unbleached <- subset_samples(physeq_object_merged_api, Status%in%c("unbleached"))
+
+#write.csv(otu_table(physeq_object_api_unbleached),file ="tree_samples_api_unbleached.csv")
+# fix labels to match coral tree in excel (file available in folder)
+otu_api_unbleached <- read.csv("tree_samples_api_unbleached.csv",check.names = FALSE,row.names = 1)
+
+vegan::vegdist(t(otu_api_unbleached), method="bray") -> api_unbleached_dist
+api_unbleached_dist <- as.dist(api_unbleached_dist)
+# read in coral tree for api samples
+coral_tree_dendro_api_unbleached <- ReadDendrogram("cox1_api_unbleached.nwk")
+
+# generating unbleached api clusters
+api_unbleached_clust <-hclust(api_unbleached_dist,"complete")
+api_unbleached_dendro <- as.dendrogram(api_unbleached_clust)
+dend_list_api_unbleached <- dendlist(as.dendrogram(coral_tree_dendro_api_unbleached), api_unbleached_dendro)
+
+api_unbleached_labels <- api_unbleached_dendro %>% labels
+api_coral_unbleached_labels <- coral_tree_dendro_api_unbleached %>% labels
+dend_list_unt_api_unbleached<- dend_list_api_unbleached %>% untangle(method = "random")
+
+color_list_api <- c("#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588")
+
+dend_list_unt_api_unbleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                               common_subtrees_color_branches = FALSE,
+                                               highlight_distinct_edges=FALSE, 
+                                               highlight_branches_lwd=FALSE,
+                                               color_lines = color_list_api,
+                                               main_left = "Coral\nPhylogeny",
+                                               main_right = "Community\nDissimilarity",
+                                               main="Unbleached Apicomplexa",
+                                               sub = paste("entanglement =", round(entanglement(dend_list_unt_api_unbleached,
+                                                                                                L=1, leaves_matching_method = "labels"), 2)),
+                                               hang = FALSE, 
+                                               rank_branches = TRUE,
+                                               type = "r",
+                                               margin_inner=0.25,
+                                               lwd=2.5,
+                                               lab.cex = 1,
+                                               cex_main = 1.2,
+                                               cex_sub=1,
+                                               center = FALSE)
+```
+
+
+Bleached tanglegrams for supplementary figure 2.
+
+
+```{r Tanglegrams Unbleached}
+
+#get bleached samples to make supplemental figure x2
+physeq_object_sym_bleached <- subset_samples(physeq_object_merged_sym, Status%in%c("bleached"))
+physeq_object_prok_bleached <- subset_samples(physeq_object_merged_prok, Status%in%c("bleached"))
+physeq_object_fungi_bleached <- subset_samples(physeq_object_merged_fungi, Status%in%c("bleached"))
+physeq_object_api_bleached <- subset_samples(physeq_object_merged_api, Status%in%c("bleached"))
+
+#write.csv(otu_table(physeq_object_sym_bleached),file ="tree_samples_symbiodinium_bleached.csv") # fixed in excel, file available in folder
+otu_symbiodinium_bleached <- read.csv("tree_samples_symbiodinium_bleached.csv",check.names = FALSE,row.names = 1)
+
+vegan::vegdist(t(otu_symbiodinium_bleached), method="bray") -> symbiodinium_bleached_dist
+symbiodinium_bleached_dist <- as.dist(symbiodinium_bleached_dist)
+
+coral_tree_dendro_symbiodinium_bleached <- ReadDendrogram("sym_bleached.nwk")
+
+# generating bleached symbiodinium clusters
+symbiodinium_bleached_clust <-hclust(symbiodinium_bleached_dist,"complete")
+
+symbiodinium_bleached_dendro <- as.dendrogram(symbiodinium_bleached_clust)
+
+dend_list_symbiodinium_bleached <- dendlist(as.dendrogram(coral_tree_dendro_symbiodinium_bleached), symbiodinium_bleached_dendro)
+
+symbiodinium_bleached_labels <- symbiodinium_bleached_dendro %>% labels
+symbiodinium_coral_bleached_labels <- coral_tree_dendro_symbiodinium_bleached %>% labels
+
+dend_list_unt_symbiodinium_bleached<- dend_list_symbiodinium_bleached %>% untangle(method = "random")
+
+color_list_sym <- c("#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2")
+
+dend_list_unt_symbiodinium_bleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                                      common_subtrees_color_branches = FALSE,
+                                                      highlight_distinct_edges=FALSE, 
+                                                      highlight_branches_lwd=FALSE,
+                                                      color_lines = color_list_sym,
+                                                      main_left = "Coral\nPhylogeny",
+                                                      main_right = "Community\nDissimilarity",
+                                                      main="Bleached Symbiodinaceae",
+                                                      sub = paste("entanglement =", round(entanglement(dend_list_unt_symbiodinium_bleached,
+                                                                                                       L=1, leaves_matching_method = "labels"), 2)),
+                                                      hang = FALSE, 
+                                                      rank_branches = TRUE,
+                                                      type = "r",
+                                                      margin_inner=0.25,
+                                                      lwd=2.5,
+                                                      lab.cex = 1,
+                                                      cex_main = 1.2,
+                                                      cex_sub=1,
+                                                      center = FALSE)
+
+# Prokaryotes bleached tanglegrams
+#write.csv(otu_table(physeq_object_prok_bleached),file ="tree_samples_prok_bleached.csv")
+otu_prok_bleached <- read.csv("tree_samples_prok_bleached.csv",check.names = FALSE,row.names = 1)
+
+vegan::vegdist(t(otu_prok_bleached), method="bray") -> prok_bleached_dist
+prok_bleached_dist <- as.dist(prok_bleached_dist)
+
+coral_tree_dendro_prok_bleached <- ReadDendrogram("prok_bleached.nwk")
+
+
+# generating unbleached prokaryote clusters
+prok_bleached_clust <-hclust(prok_bleached_dist,"complete")
+
+prok_bleached_dendro <- as.dendrogram(prok_bleached_clust)
+dend_list_prok_bleached <- dendlist(as.dendrogram(coral_tree_dendro_prok_bleached), prok_bleached_dendro)
+
+prok_bleached_labels <- prok_bleached_dendro %>% labels
+prok_coral_bleached_labels <- coral_tree_dendro_prok_bleached %>% labels
+
+dend_list_unt_prok_bleached<- dend_list_prok_bleached %>% untangle(method = "random")
+
+color_list_sym <- c("#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588")
+
+dend_list_unt_prok_bleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                                    common_subtrees_color_branches = FALSE,
+                                                    highlight_distinct_edges=FALSE, 
+                                                    highlight_branches_lwd=FALSE,
+                                                    color_lines = color_list_sym,
+                                                    main_left = "Coral\nPhylogeny",
+                                                    main_right = "Community\nDissimilarity",
+                                                    main="Bleached Prokaryotes",
+                                                    sub = paste("entanglement =", round(entanglement(dend_list_unt_prok_bleached,
+                                                                                                     L=1, leaves_matching_method = "labels"), 2)),
+                                                    hang = FALSE, 
+                                                    rank_branches = TRUE,
+                                                    type = "r",
+                                                    margin_inner=0.25,
+                                                    lwd=2.5,
+                                                    lab.cex = 1,
+                                                    cex_main = 1.2,
+                                                    cex_sub=1,
+                                                    center = FALSE)
+
+# Fungi bleached tanglegram
+#write.csv(otu_table(physeq_object_fungi_bleached),file ="tree_samples_fungi_bleached.csv")
+otu_fungi_bleached <- read.csv("tree_samples_fungi_bleached.csv",check.names = FALSE,row.names = 1)
+
+vegan::vegdist(t(otu_fungi_bleached), method="bray") -> fungi_bleached_dist
+fungi_bleached_dist <- as.dist(fungi_bleached_dist)
+
+coral_tree_dendro_fungi_bleached <- ReadDendrogram("fungi_bleached.nwk")
+
+# generating bleached fungi clusters
+fungi_bleached_clust <-hclust(fungi_bleached_dist,"complete")
+
+fungi_bleached_dendro <- as.dendrogram(fungi_bleached_clust)
+
+dend_list_fungi_bleached <- dendlist(as.dendrogram(coral_tree_dendro_fungi_bleached), fungi_bleached_dendro)
+
+fungi_bleached_labels <- fungi_bleached_dendro %>% labels
+fungi_coral_bleached_labels <- coral_tree_dendro_fungi_bleached %>% labels
+
+dend_list_unt_fungi_bleached<- dend_list_fungi_bleached %>% untangle(method = "random")
+
+color_list_sym <- c("#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00")
+
+dend_list_unt_fungi_bleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                            common_subtrees_color_branches = FALSE,
+                                            highlight_distinct_edges=FALSE, 
+                                            highlight_branches_lwd=FALSE,
+                                            color_lines = color_list_sym,
+                                            main_left = "Coral\nPhylogeny",
+                                            main_right = "Community\nDissimilarity",
+                                            main="Bleached Fungi",
+                                            sub = paste("entanglement =", round(entanglement(dend_list_unt_fungi_bleached,
+                                                                                             L=1, leaves_matching_method = "labels"), 2)),
+                                            hang = FALSE, 
+                                            rank_branches = TRUE,
+                                            type = "r",
+                                            margin_inner=0.25,
+                                            lwd=2.5,
+                                            lab.cex = 1,
+                                            cex_main = 1.2,
+                                            cex_sub=1,
+                                            center = FALSE)
+
+# Apicomplexa bleached tanglegram
+#write.csv(otu_table(physeq_object_api_bleached),file ="tree_samples_api_bleached.csv")
+otu_api_bleached <- read.csv("tree_samples_api_bleached.csv",check.names = FALSE,row.names = 1)
+vegan::vegdist(t(otu_api_bleached), method="bray") -> api_bleached_dist
+api_bleached_dist <- as.dist(api_bleached_dist)
+
+coral_tree_dendro_api_bleached <- ReadDendrogram("cox1_api_bleached.nwk")
+
+# generating bleached api clusters
+api_bleached_clust <-hclust(api_bleached_dist,"complete")
+
+api_bleached_dendro <- as.dendrogram(api_bleached_clust)
+
+dend_list_api_bleached <- dendlist(as.dendrogram(coral_tree_dendro_api_bleached), api_bleached_dendro)
+
+api_bleached_labels <- api_bleached_dendro %>% labels
+api_coral_bleached_labels <- coral_tree_dendro_api_bleached %>% labels
+
+dend_list_unt_api_bleached<- dend_list_api_bleached %>% untangle(method = "random")
+
+color_list_sym <- c("#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#0072B2","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#E69F00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#D55E00","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588","#CBD588")
+
+dend_list_unt_api_bleached  %>% tanglegram(common_subtrees_color_lines=FALSE, 
+                                             common_subtrees_color_branches = FALSE,
+                                             highlight_distinct_edges=FALSE, 
+                                             highlight_branches_lwd=FALSE,
+                                             color_lines = color_list_sym,
+                                             main_left = "Coral\nPhylogeny",
+                                             main_right = "Community\nDissimilarity",
+                                             main="Bleached Apicomplexa",
+                                             sub = paste("entanglement =", round(entanglement(dend_list_unt_api_bleached,
+                                                                                              L=1, leaves_matching_method = "labels"), 2)),
+                                             hang = FALSE, 
+                                             rank_branches = TRUE,
+                                             type = "r",
+                                             margin_inner=0.25,
+                                             lwd=2.5,
+                                             lab.cex = 1,
+                                             cex_main = 1.2,
+                                             cex_sub=1,
+                                             center = FALSE)
+
+```
